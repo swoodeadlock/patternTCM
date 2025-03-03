@@ -1,212 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Interactive Neo4j Graph</title>
-  <style>
-    /* Ensure the body and html cover full viewport */
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      font-family: Arial, sans-serif;
-      background-color: #f8f8f8;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Knowledge Graph</title>
 
-    /* Title styling */
-    h1 {
-      text-align: center;
-      margin: 10px 0;
-    }
+    <!-- Load Vis.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/standalone/umd/vis-network.min.js"></script>
 
-    /* Container for the Cytoscape graph */
-    #cy {
-      width: 100%;
-      height: 85vh;
-      display: block;
-      border: 1px solid #ccc;
-    }
+    <style>
+        /* Ensure the body and html cover full viewport */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+        }
 
-    /* Popup (hidden by default) */
-    .node-info {
-      position: fixed;
-      right: -350px; /* Initially off-screen */
-      top: 50px;
-      width: 300px;
-      height: auto;
-      background: white;
-      box-shadow: -2px 0px 10px rgba(0, 0, 0, 0.3);
-      padding: 15px;
-      transition: right 0.3s ease-in-out;
-      border-radius: 8px;
-      font-size: 14px;
-    }
+        /* Title */
+        h1 {
+            text-align: center;
+            margin: 10px 0;
+        }
 
-    /* Close button */
-    .node-info .close-btn {
-      display: block;
-      text-align: right;
-      font-size: 20px;
-      cursor: pointer;
-    }
+        /* Graph Container */
+        #network {
+            width: 100%;
+            height: 85vh;
+            border: 1px solid lightgray;
+        }
 
-    /* Make sure labels are readable */
-    .cytoscape-node-label {
-      font-size: 10px;
-      color: white;
-      text-wrap: wrap;
-      text-overflow: ellipsis;
-    }
-  </style>
+        /* Slide-in Info Panel */
+        .node-info {
+            position: fixed;
+            right: -350px; /* Initially off-screen */
+            top: 50px;
+            width: 300px;
+            background: white;
+            box-shadow: -2px 0px 10px rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            transition: right 0.3s ease-in-out;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        /* Close Button */
+        .node-info .close-btn {
+            display: block;
+            text-align: right;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
 
-  <h1>Interactive Neo4j Graph</h1>
+    <h1>Interactive Knowledge Graph</h1>
+    <!-- Graph Container -->
+    <div id="network"></div>
 
-  <!-- Cytoscape Graph -->
-  <div id="cy"></div>
+    <!-- Floating info panel -->
+    <div id="node-info" class="node-info">
+        <span class="close-btn" onclick="hideInfoPanel()">×</span>
+        <h3 id="node-title">Node</h3>
+        <p><strong>Description:</strong> <span id="node-description"></span></p>
+        <p><strong>Organs Affected:</strong> <span id="node-organs"></span></p>
+        <p><strong>Key Symptoms:</strong> <span id="node-symptoms"></span></p>
+        <p><strong>Nature:</strong> <span id="node-nature"></span></p>
+    </div>
 
-  <!-- Floating info panel -->
-  <div id="node-info" class="node-info">
-    <span class="close-btn" onclick="hideInfoPanel()">×</span>
-    <h3 id="node-title">Node</h3>
-    <p><strong>Description:</strong> <span id="node-description"></span></p>
-    <p><strong>Organs Affected:</strong> <span id="node-organs"></span></p>
-    <p><strong>Key Symptoms:</strong> <span id="node-symptoms"></span></p>
-    <p><strong>Nature:</strong> <span id="node-nature"></span></p>
-  </div>
+    <script>
+        async function loadGraph() {
+            try {
+                const response = await fetch("data.json");
+                const rawData = await response.json();
 
-  <!-- Load Cytoscape -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.21.1/cytoscape.min.js"></script>
+                let nodes = new vis.DataSet();
+                let edges = new vis.DataSet();
+                let nodeMap = {}; 
+                let fullTextMap = {}; 
 
-  <script>
-    function hideInfoPanel() {
-      document.getElementById('node-info').style.right = '-350px';
-    }
+                function getNodeId(elementId) {
+                    if (!nodeMap[elementId]) {
+                        nodeMap[elementId] = Object.keys(nodeMap).length + 1;
+                    }
+                    return nodeMap[elementId];
+                }
 
-    fetch('data.json')
-      .then(response => response.json())
-      .then(data => {
-        let nodesMap = {};
-        let edgesMap = {};
+                rawData.forEach(record => {
+                    let node1 = record.n;
+                    let node2 = record.m;
+                    let rel = record.r;
 
-        data.forEach(item => {
-          let node1 = item.n;
-          let node2 = item.m;
-          let rel = item.r;
+                    let node1Id = getNodeId(node1.properties.id);
+                    let node2Id = getNodeId(node2.properties.id);
 
-          if (!nodesMap[node1.properties.id]) {
-            nodesMap[node1.properties.id] = {
-              data: {
-                id: node1.properties.id,
-                label: node1.properties.id.length > 10 ? node1.properties.id.substring(0, 10) + "..." : node1.properties.id,
-                description: node1.properties.description || '',
-                organsAffected: node1.properties.organsAffected || '',
-                keySymptoms: node1.properties.keySymptoms || '',
-                nature: node1.properties.nature || ''
-              }
-            };
-          }
-          if (!nodesMap[node2.properties.id]) {
-            nodesMap[node2.properties.id] = {
-              data: {
-                id: node2.properties.id,
-                label: node2.properties.id.length > 10 ? node2.properties.id.substring(0, 10) + "..." : node2.properties.id,
-                description: node2.properties.description || '',
-                organsAffected: node2.properties.organsAffected || '',
-                keySymptoms: node2.properties.keySymptoms || '',
-                nature: node2.properties.nature || ''
-              }
-            };
-          }
+                    fullTextMap[node1Id] = node1.properties;
+                    fullTextMap[node2Id] = node2.properties;
 
-          let edgeId = rel.properties.id + "_" + node1.properties.id + "_" + node2.properties.id;
-          if (!edgesMap[edgeId]) {
-            edgesMap[edgeId] = {
-              data: {
-                id: edgeId,
-                source: node1.properties.id,
-                target: node2.properties.id,
-                label: rel.properties.notes || ''
-              }
-            };
-          }
-        });
+                    if (!nodes.get(node1Id)) {
+                        nodes.add({
+                            id: node1Id,
+                            label: node1.properties.id.length > 10 ? node1.properties.id.substring(0, 10) + "..." : node1.properties.id,
+                            group: node1.properties.nature || "Unknown",
+                            font: { size: 14 },
+                            shape: "dot",
+                            size: 25
+                        });
+                    }
 
-        let nodes = Object.values(nodesMap);
-        let edges = Object.values(edgesMap);
-        let elements = nodes.concat(edges);
+                    if (!nodes.get(node2Id)) {
+                        nodes.add({
+                            id: node2Id,
+                            label: node2.properties.id.length > 10 ? node2.properties.id.substring(0, 10) + "..." : node2.properties.id,
+                            group: node2.properties.nature || "Unknown",
+                            font: { size: 14 },
+                            shape: "dot",
+                            size: 25
+                        });
+                    }
 
-        var cy = cytoscape({
-          container: document.getElementById('cy'),
-          elements: elements,
-          style: [
-            {
-              selector: 'node',
-              style: {
-                'background-color': '#666',
-                'label': 'data(label)',
-                'text-valign': 'center',
-                'color': '#fff',
-                'font-size': '12px',
-                'width': '40px',
-                'height': '40px'
-              }
-            },
-            {
-              selector: 'edge',
-              style: {
-                'width': 1.5,
-                'line-color': '#aaa',
-                'target-arrow-color': '#aaa',
-                'target-arrow-shape': 'triangle',
-                'curve-style': 'bezier',
-                'font-size': '8px',
-                'label': 'data(label)'
-              }
+                    edges.add({
+                        from: node1Id,
+                        to: node2Id,
+                        label: rel.properties.notes || '',
+                        font: { align: "middle", size: 10 },
+                        color: { color: "gray" }
+                    });
+                });
+
+                const container = document.getElementById("network");
+                const graphData = { nodes, edges };
+                const options = { 
+                    layout: { improvedLayout: true },
+                    physics: {
+                        enabled: true, // Enable smooth dragging
+                        stabilization: false,
+                        barnesHut: {
+                            gravitationalConstant: -5000,
+                            centralGravity: 0.3,
+                            springLength: 150,
+                            damping: 0.3
+                        }
+                    },
+                    nodes: { 
+                        shape: "dot", 
+                        borderWidth: 1, 
+                        font: { face: "Arial", align: "center" }
+                    },
+                    edges: { 
+                        arrows: "to", 
+                        font: { align: "top" },
+                        smooth: { type: "continuous" }
+                    }
+                };
+
+                const network = new vis.Network(container, graphData, options);
+
+                // Node Click Event - Show Info Panel
+                network.on("click", function(params) {
+                    if (params.nodes.length > 0) {
+                        let nodeId = params.nodes[0];
+                        let nodeData = fullTextMap[nodeId];
+
+                        document.getElementById("node-title").innerText = nodeData.id || "Node";
+                        document.getElementById("node-description").innerText = nodeData.description || "No description";
+                        document.getElementById("node-organs").innerText = nodeData.organsAffected || "N/A";
+                        document.getElementById("node-symptoms").innerText = nodeData.keySymptoms || "N/A";
+                        document.getElementById("node-nature").innerText = nodeData.nature || "N/A";
+
+                        document.getElementById("node-info").style.right = "0px";
+                    }
+                });
+
+                // Click outside to close info panel
+                document.body.addEventListener("click", function(event) {
+                    if (!event.target.closest("#node-info") && !event.target.closest("#network")) {
+                        hideInfoPanel();
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error loading or processing JSON:", error);
             }
-          ],
-          layout: {
-            name: 'cose',
-            fit: true,
-            padding: 50,
-            nodeRepulsion: 1000,
-            idealEdgeLength: 100,
-            edgeElasticity: 200,
-            gravity: 80,
-            numIter: 500
-          }
-        });
+        }
 
-        // Enable dragging of nodes
-        cy.nodes().grabify();
+        function hideInfoPanel() {
+            document.getElementById("node-info").style.right = "-350px";
+        }
 
-        // Click event for nodes
-        cy.on('tap', 'node', function(evt) {
-          var node = evt.target;
+        window.onload = loadGraph;
+    </script>
 
-          document.getElementById('node-title').innerText = node.data('label');
-          document.getElementById('node-description').innerText = node.data('description');
-          document.getElementById('node-organs').innerText = node.data('organsAffected');
-          document.getElementById('node-symptoms').innerText = node.data('keySymptoms');
-          document.getElementById('node-nature').innerText = node.data('nature');
-
-          // Show the info panel
-          document.getElementById('node-info').style.right = '0px';
-        });
-
-        // Click outside to close info panel
-        document.body.addEventListener('click', function(event) {
-          if (!event.target.closest('#node-info') && !event.target.closest('node')) {
-            hideInfoPanel();
-          }
-        });
-
-      })
-      .catch(error => {
-        console.error('Error loading data:', error);
-      });
-  </script>
 </body>
 </html>
+
