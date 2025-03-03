@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive Neo4j Graph</title>
+  <style>
+    /* Basic styling for our graph container */
+    #cy {
+      width: 800px;
+      height: 600px;
+      border: 1px solid #ccc;
+      margin: 20px auto;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Interactive Neo4j Graph</h1>
+  <!-- This is where our graph will appear -->
+  <div id="cy"></div>
+
+  <!-- Load Cytoscape.js from a CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.21.1/cytoscape.min.js"></script>
+
+  <!-- Our custom script to load data and render the graph -->
+  <script>
+    // Fetch the graph data from data.json
+    fetch('data.json')
+      .then(response => response.json())
+      .then(data => {
+        // 'data' is expected to be an array of objects, each with keys: n, r, and m
+        // We'll use an object to collect unique nodes and edges.
+        let nodesMap = {};
+        let edgesMap = {};
+
+        data.forEach(item => {
+          // Each item represents a triple: node1 --relationship--> node2.
+          let node1 = item.n;
+          let node2 = item.m;
+          let rel = item.r;
+          
+          // We use the node property 'id' (like "Wind", "Cold", etc.) as the unique identifier.
+          if (!nodesMap[node1.properties.id]) {
+            nodesMap[node1.properties.id] = {
+              data: {
+                id: node1.properties.id,
+                label: node1.properties.id,
+                description: node1.properties.description || '',
+                organsAffected: node1.properties.organsAffected || '',
+                keySymptoms: node1.properties.keySymptoms || '',
+                nature: node1.properties.nature || ''
+              }
+            };
+          }
+          if (!nodesMap[node2.properties.id]) {
+            nodesMap[node2.properties.id] = {
+              data: {
+                id: node2.properties.id,
+                label: node2.properties.id,
+                description: node2.properties.description || '',
+                organsAffected: node2.properties.organsAffected || '',
+                keySymptoms: node2.properties.keySymptoms || '',
+                nature: node2.properties.nature || ''
+              }
+            };
+          }
+          
+          // Create a unique edge ID using the relationship id and the node ids.
+          let edgeId = rel.properties.id + "_" + node1.properties.id + "_" + node2.properties.id;
+          if (!edgesMap[edgeId]) {
+            edgesMap[edgeId] = {
+              data: {
+                id: edgeId,
+                source: node1.properties.id,
+                target: node2.properties.id,
+                label: rel.properties.notes || ''
+              }
+            };
+          }
+        });
+
+        // Convert our nodes and edges maps into arrays
+        let nodes = Object.values(nodesMap);
+        let edges = Object.values(edgesMap);
+        let elements = nodes.concat(edges);
+
+        // Initialize Cytoscape
+        var cy = cytoscape({
+          container: document.getElementById('cy'),
+          elements: elements,
+          style: [
+            {
+              selector: 'node',
+              style: {
+                'background-color': '#666',
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'color': '#fff',
+                'font-size': '10px',
+                'width': '40px',
+                'height': '40px'
+              }
+            },
+            {
+              selector: 'edge',
+              style: {
+                'width': 2,
+                'line-color': '#ccc',
+                'target-arrow-color': '#ccc',
+                'target-arrow-shape': 'triangle',
+                'curve-style': 'bezier',
+                'label': 'data(label)',
+                'font-size': '8px',
+                'text-rotation': 'autorotate'
+              }
+            }
+          ],
+          layout: {
+            name: 'cose', // A force-directed layout
+            idealEdgeLength: 100,
+            nodeOverlap: 20,
+            refresh: 20,
+            fit: true,
+            padding: 30,
+            randomize: true,
+            componentSpacing: 100,
+            nodeRepulsion: 400000,
+            edgeElasticity: 100,
+            nestingFactor: 5,
+            gravity: 80,
+            numIter: 1000,
+            initialTemp: 200,
+            coolingFactor: 0.95,
+            minTemp: 1.0
+          }
+        });
+
+        // Add a click event for nodes: when you click, display its details.
+        cy.on('tap', 'node', function(evt){
+          var node = evt.target;
+          alert(
+            'Node: ' + node.data('label') + "\n" +
+            'Description: ' + node.data('description') + "\n" +
+            'Organs Affected: ' + node.data('organsAffected') + "\n" +
+            'Key Symptoms: ' + node.data('keySymptoms') + "\n" +
+            'Nature: ' + node.data('nature')
+          );
+        });
+      })
+      .catch(error => {
+        console.error('Error loading data:', error);
+      });
+  </script>
+</body>
+</html>
