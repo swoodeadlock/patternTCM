@@ -1,253 +1,212 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Interactive Neo4j Graph with Slide-in Panel</title>
+  <title>Interactive Neo4j Graph</title>
   <style>
-    /* Make the page fill the entire window */
+    /* Ensure the body and html cover full viewport */
     html, body {
       margin: 0;
       padding: 0;
       width: 100%;
       height: 100%;
       font-family: Arial, sans-serif;
-      overflow: hidden; /* So we don’t get scrollbars */
+      background-color: #f8f8f8;
     }
 
-    /* Cytoscape container: occupies the left portion (or the entire screen if no panel is open) */
+    /* Title styling */
+    h1 {
+      text-align: center;
+      margin: 10px 0;
+    }
+
+    /* Container for the Cytoscape graph */
     #cy {
       width: 100%;
-      height: 100%;
-      float: left;
-      background: #f5f5f5; /* Just a light background to see if it’s filling the screen */
+      height: 85vh;
+      display: block;
+      border: 1px solid #ccc;
     }
 
-    /* Slide-in info panel on the right */
-    #nodeInfo {
+    /* Popup (hidden by default) */
+    .node-info {
       position: fixed;
-      top: 0;
-      right: 0;
+      right: -350px; /* Initially off-screen */
+      top: 50px;
       width: 300px;
-      height: 100%;
-      background: #fff;
-      border-left: 1px solid #ccc;
-      box-shadow: -2px 0 5px rgba(0,0,0,0.3);
-      transition: transform 0.3s ease-in-out;
-      transform: translateX(100%); /* Hidden by default (off screen to the right) */
-      z-index: 9999;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-    #nodeInfo.show {
-      transform: translateX(0); /* Slide it in */
+      height: auto;
+      background: white;
+      box-shadow: -2px 0px 10px rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      transition: right 0.3s ease-in-out;
+      border-radius: 8px;
+      font-size: 14px;
     }
 
-    #nodeInfo h2 {
-      margin-top: 0;
-    }
-    #closeBtn {
-      margin-top: 20px;
-      padding: 5px 10px;
+    /* Close button */
+    .node-info .close-btn {
+      display: block;
+      text-align: right;
+      font-size: 20px;
       cursor: pointer;
+    }
+
+    /* Make sure labels are readable */
+    .cytoscape-node-label {
+      font-size: 10px;
+      color: white;
+      text-wrap: wrap;
+      text-overflow: ellipsis;
     }
   </style>
 </head>
 <body>
 
-<!-- The Cytoscape graph container -->
-<div id="cy"></div>
+  <h1>Interactive Neo4j Graph</h1>
 
-<!-- Slide-in panel for node details -->
-<div id="nodeInfo">
-  <h2 id="nodeLabel"></h2>
-  <p><strong>Description:</strong> <span id="nodeDesc"></span></p>
-  <p><strong>Organs Affected:</strong> <span id="nodeOrgans"></span></p>
-  <p><strong>Key Symptoms:</strong> <span id="nodeSymptoms"></span></p>
-  <p><strong>Nature:</strong> <span id="nodeNature"></span></p>
-  <button id="closeBtn">Close</button>
-</div>
+  <!-- Cytoscape Graph -->
+  <div id="cy"></div>
 
-<!-- Load Cytoscape from a CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.21.1/cytoscape.min.js"></script>
+  <!-- Floating info panel -->
+  <div id="node-info" class="node-info">
+    <span class="close-btn" onclick="hideInfoPanel()">×</span>
+    <h3 id="node-title">Node</h3>
+    <p><strong>Description:</strong> <span id="node-description"></span></p>
+    <p><strong>Organs Affected:</strong> <span id="node-organs"></span></p>
+    <p><strong>Key Symptoms:</strong> <span id="node-symptoms"></span></p>
+    <p><strong>Nature:</strong> <span id="node-nature"></span></p>
+  </div>
 
-<script>
-  /****************************************************
-   * 1) FETCH AND PROCESS YOUR NEO4J-EXPORTED JSON
-   ****************************************************/
-  fetch('data.json')  // <-- Replace with your actual JSON filename/path
-    .then(response => response.json())
-    .then(jsonData => {
-      // Convert your Neo4j JSON array into Cytoscape-friendly data
-      const { nodes, edges } = convertNeo4jDataToCytoscape(jsonData);
+  <!-- Load Cytoscape -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.21.1/cytoscape.min.js"></script>
 
-      /****************************************************
-       * 2) INITIALIZE CYTOSCAPE
-       ****************************************************/
-      const cy = cytoscape({
-        container: document.getElementById('cy'),
-        elements: [...nodes, ...edges],
-        style: [
-          {
-            selector: 'node',
-            style: {
-              /* We store a shorter label in data(shortLabel) if you like: */
-              'label': 'data(shortLabel)',  
-              'background-color': '#666',
-              'color': '#fff',
-              'text-valign': 'center',
-              'font-size': '10px',
-              'width': '40px',
-              'height': '40px'
+  <script>
+    function hideInfoPanel() {
+      document.getElementById('node-info').style.right = '-350px';
+    }
+
+    fetch('data.json')
+      .then(response => response.json())
+      .then(data => {
+        let nodesMap = {};
+        let edgesMap = {};
+
+        data.forEach(item => {
+          let node1 = item.n;
+          let node2 = item.m;
+          let rel = item.r;
+
+          if (!nodesMap[node1.properties.id]) {
+            nodesMap[node1.properties.id] = {
+              data: {
+                id: node1.properties.id,
+                label: node1.properties.id.length > 10 ? node1.properties.id.substring(0, 10) + "..." : node1.properties.id,
+                description: node1.properties.description || '',
+                organsAffected: node1.properties.organsAffected || '',
+                keySymptoms: node1.properties.keySymptoms || '',
+                nature: node1.properties.nature || ''
+              }
+            };
+          }
+          if (!nodesMap[node2.properties.id]) {
+            nodesMap[node2.properties.id] = {
+              data: {
+                id: node2.properties.id,
+                label: node2.properties.id.length > 10 ? node2.properties.id.substring(0, 10) + "..." : node2.properties.id,
+                description: node2.properties.description || '',
+                organsAffected: node2.properties.organsAffected || '',
+                keySymptoms: node2.properties.keySymptoms || '',
+                nature: node2.properties.nature || ''
+              }
+            };
+          }
+
+          let edgeId = rel.properties.id + "_" + node1.properties.id + "_" + node2.properties.id;
+          if (!edgesMap[edgeId]) {
+            edgesMap[edgeId] = {
+              data: {
+                id: edgeId,
+                source: node1.properties.id,
+                target: node2.properties.id,
+                label: rel.properties.notes || ''
+              }
+            };
+          }
+        });
+
+        let nodes = Object.values(nodesMap);
+        let edges = Object.values(edgesMap);
+        let elements = nodes.concat(edges);
+
+        var cy = cytoscape({
+          container: document.getElementById('cy'),
+          elements: elements,
+          style: [
+            {
+              selector: 'node',
+              style: {
+                'background-color': '#666',
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'color': '#fff',
+                'font-size': '12px',
+                'width': '40px',
+                'height': '40px'
+              }
+            },
+            {
+              selector: 'edge',
+              style: {
+                'width': 1.5,
+                'line-color': '#aaa',
+                'target-arrow-color': '#aaa',
+                'target-arrow-shape': 'triangle',
+                'curve-style': 'bezier',
+                'font-size': '8px',
+                'label': 'data(label)'
+              }
             }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'width': 2,
-              'line-color': '#ccc',
-              'target-arrow-color': '#ccc',
-              'target-arrow-shape': 'triangle',
-              'curve-style': 'bezier',
-              'label': 'data(label)',
-              'font-size': '8px',
-              'text-rotation': 'autorotate'
-            }
+          ],
+          layout: {
+            name: 'cose',
+            fit: true,
+            padding: 50,
+            nodeRepulsion: 1000,
+            idealEdgeLength: 100,
+            edgeElasticity: 200,
+            gravity: 80,
+            numIter: 500
           }
-        ],
-        layout: {
-          name: 'cose',          // A force-directed layout
-          idealEdgeLength: 100,
-          nodeOverlap: 20,
-          fit: true,
-          padding: 30,
-          randomize: true,
-          nodeRepulsion: 400000,
-          edgeElasticity: 100,
-          gravity: 80,
-          numIter: 1000,
-          coolingFactor: 0.95,
-          minTemp: 1.0
-        },
-        // Allow zooming and panning with mouse/touch
-        userZoomingEnabled: true,
-        userPanningEnabled: true,
-        boxSelectionEnabled: false
-      });
+        });
 
-      // If you want to let users drag nodes around after layout:
-      // (By default, COSE locks nodes while calculating. Once done, they can be dragged.)
-      cy.on('layoutstop', () => {
-        // All nodes are now free to be dragged
-        cy.nodes().unlock();
-      });
+        // Enable dragging of nodes
+        cy.nodes().grabify();
 
-      /****************************************************
-       * 3) SLIDE-IN INFO PANEL LOGIC
-       ****************************************************/
-      const infoPanel = document.getElementById('nodeInfo');
-      const labelEl = document.getElementById('nodeLabel');
-      const descEl = document.getElementById('nodeDesc');
-      const organsEl = document.getElementById('nodeOrgans');
-      const symptomsEl = document.getElementById('nodeSymptoms');
-      const natureEl = document.getElementById('nodeNature');
-      const closeBtn = document.getElementById('closeBtn');
+        // Click event for nodes
+        cy.on('tap', 'node', function(evt) {
+          var node = evt.target;
 
-      // When user clicks a node
-      cy.on('tap', 'node', (evt) => {
-        const node = evt.target;
-        labelEl.textContent     = node.data('label')           || '';
-        descEl.textContent      = node.data('description')     || '';
-        organsEl.textContent    = node.data('organsAffected')  || '';
-        symptomsEl.textContent  = node.data('keySymptoms')     || '';
-        natureEl.textContent    = node.data('nature')          || '';
+          document.getElementById('node-title').innerText = node.data('label');
+          document.getElementById('node-description').innerText = node.data('description');
+          document.getElementById('node-organs').innerText = node.data('organsAffected');
+          document.getElementById('node-symptoms').innerText = node.data('keySymptoms');
+          document.getElementById('node-nature').innerText = node.data('nature');
 
-        // Slide in the panel
-        infoPanel.classList.add('show');
-      });
+          // Show the info panel
+          document.getElementById('node-info').style.right = '0px';
+        });
 
-      // Close panel on button click
-      closeBtn.addEventListener('click', () => {
-        infoPanel.classList.remove('show');
-      });
-
-      // Close panel if user taps on empty background
-      cy.on('tap', (evt) => {
-        if (evt.target === cy) {
-          infoPanel.classList.remove('show');
-        }
-      });
-    })
-    .catch(err => console.error(err));
-
-  /****************************************************
-   * HELPER: CONVERT NEO4J DATA → CYTOSCAPE ELEMENTS
-   ****************************************************/
-  function convertNeo4jDataToCytoscape(data) {
-    let nodesMap = {};
-    let edgesMap = {};
-
-    data.forEach(item => {
-      // item.n, item.r, item.m
-      const node1 = item.n;
-      const node2 = item.m;
-      const rel   = item.r;
-
-      // Unique IDs for each node
-      const id1 = node1.properties.id;
-      const id2 = node2.properties.id;
-
-      // Build a "short label" if you want truncated text (example: up to 8 chars)
-      const short1 = id1.length > 8 ? id1.slice(0,8) + '…' : id1;
-      const short2 = id2.length > 8 ? id2.slice(0,8) + '…' : id2;
-
-      // Add node1 if not seen
-      if (!nodesMap[id1]) {
-        nodesMap[id1] = {
-          data: {
-            id: id1,
-            label: id1, // Full label
-            shortLabel: short1, // Short label
-            description: node1.properties.description || '',
-            organsAffected: node1.properties.organsAffected || '',
-            keySymptoms: node1.properties.keySymptoms || '',
-            nature: node1.properties.nature || ''
+        // Click outside to close info panel
+        document.body.addEventListener('click', function(event) {
+          if (!event.target.closest('#node-info') && !event.target.closest('node')) {
+            hideInfoPanel();
           }
-        };
-      }
-      // Add node2 if not seen
-      if (!nodesMap[id2]) {
-        nodesMap[id2] = {
-          data: {
-            id: id2,
-            label: id2,
-            shortLabel: short2,
-            description: node2.properties.description || '',
-            organsAffected: node2.properties.organsAffected || '',
-            keySymptoms: node2.properties.keySymptoms || '',
-            nature: node2.properties.nature || ''
-          }
-        };
-      }
+        });
 
-      // Create an edge ID from the relationship ID + node IDs
-      const edgeId = `${rel.properties.id}_${id1}_${id2}`;
-      if (!edgesMap[edgeId]) {
-        edgesMap[edgeId] = {
-          data: {
-            id: edgeId,
-            source: id1,
-            target: id2,
-            label: rel.properties.notes || ''
-          }
-        };
-      }
-    });
-
-    // Convert objects to arrays
-    const nodes = Object.values(nodesMap);
-    const edges = Object.values(edgesMap);
-    return { nodes, edges };
-  }
-</script>
+      })
+      .catch(error => {
+        console.error('Error loading data:', error);
+      });
+  </script>
 </body>
 </html>
